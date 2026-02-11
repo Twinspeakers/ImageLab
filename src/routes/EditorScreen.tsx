@@ -450,14 +450,29 @@ export const EditorScreen = () => {
     return ratio < 0.25 ? 'before' : ratio > 0.75 ? 'after' : 'merge'
   }
 
-  const focusPanelInGroup = (panelId: PanelId, groupLead: PanelId) => {
-    const next = dockGroups.map((group) => {
-      if (group[0] !== groupLead) return group
-      const without = group.filter((id) => id !== panelId)
-      return [panelId, ...without]
-    })
-    commitDockGroups(next)
+  const focusPanelInGroup = (panelId: PanelId) => {
     setWorkspace((current) => { current.activePanel = panelId })
+  }
+
+  const reorderPanelTabs = (dragPanelId: PanelId, targetPanelId: PanelId) => {
+    if (dragPanelId === targetPanelId) return
+    setWorkspace((current) => {
+      const groups = normalizeDockGroups(current.panelOrder, current.hiddenPanels, current.dockPanelGroups)
+      const stripped = groups
+        .map((group) => group.filter((panelId) => panelId !== dragPanelId))
+        .filter((group) => group.length > 0)
+      const targetGroupIndex = stripped.findIndex((group) => group.includes(targetPanelId))
+      if (targetGroupIndex < 0) return
+      const targetGroup = stripped[targetGroupIndex].slice()
+      const insertAt = Math.max(0, targetGroup.indexOf(targetPanelId))
+      targetGroup.splice(insertAt, 0, dragPanelId)
+      stripped[targetGroupIndex] = targetGroup
+      current.dockPanelGroups = stripped
+      const flatVisible = stripped.flat()
+      const hidden = current.panelOrder.filter((panelId) => current.hiddenPanels.includes(panelId))
+      current.panelOrder = [...flatVisible, ...hidden.filter((panelId) => !flatVisible.includes(panelId))]
+      current.activePanel = dragPanelId
+    })
   }
 
   const startDockResize = (panelId: PanelId, event: ReactPointerEvent<HTMLDivElement>) => {
@@ -1694,12 +1709,13 @@ export const EditorScreen = () => {
                 </div>
               )}
               {dockGroups.map((group, index) => {
-                const panelId = group[0]
-                if (!panelId) return null
-                const dropMode = dockDropTarget?.targetLead === panelId ? dockDropTarget.mode : null
+                const leadPanelId = group[0]
+                if (!leadPanelId) return null
+                const activePanelInGroup = group.includes(workspace.activePanel) ? workspace.activePanel : leadPanelId
+                const dropMode = dockDropTarget?.targetLead === leadPanelId ? dockDropTarget.mode : null
                 return (
                 <div
-                  key={panelId}
+                  key={leadPanelId}
                   className={`relative flex min-h-[120px] flex-col overflow-hidden rounded border bg-slate-900 ${
                     dropMode === 'merge'
                       ? 'border-cyan-400 ring-2 ring-cyan-500/70'
@@ -1707,39 +1723,39 @@ export const EditorScreen = () => {
                         ? 'border-cyan-500/70'
                         : 'border-slate-800'
                   }`}
-                  style={index === dockGroups.length - 1 ? undefined : { height: getDockPanelHeight(panelId) }}
+                  style={index === dockGroups.length - 1 ? undefined : { height: getDockPanelHeight(leadPanelId) }}
                   onDragEnter={(event) => {
                     event.preventDefault()
                     const drag = draggingPanelId
-                    if (!drag || drag === panelId) return
-                    setDockDropTarget({ targetLead: panelId, mode: resolveDockDropMode(event) })
+                    if (!drag || drag === leadPanelId) return
+                    setDockDropTarget({ targetLead: leadPanelId, mode: resolveDockDropMode(event) })
                   }}
                   onDragOver={(event) => {
                     event.preventDefault()
                     const drag = draggingPanelId
-                    if (!drag || drag === panelId) {
+                    if (!drag || drag === leadPanelId) {
                       setDockDropTarget(null)
                       return
                     }
-                    setDockDropTarget({ targetLead: panelId, mode: resolveDockDropMode(event) })
+                    setDockDropTarget({ targetLead: leadPanelId, mode: resolveDockDropMode(event) })
                   }}
                   onDragLeave={(event) => {
                     const next = event.relatedTarget as Node | null
                     if (next && event.currentTarget.contains(next)) return
-                    setDockDropTarget((current) => (current?.targetLead === panelId ? null : current))
+                    setDockDropTarget((current) => (current?.targetLead === leadPanelId ? null : current))
                   }}
                   onDrop={(event) => {
                     event.preventDefault()
                     const drag = draggingPanelId ?? (event.dataTransfer.getData('imagelab/panel-tab') as PanelId)
                     setDockDropTarget(null)
                     setDraggingPanelId(null)
-                    if (!drag || drag === panelId) return
+                    if (!drag || drag === leadPanelId) return
                     const mode = resolveDockDropMode(event)
-                    placePanelInGroup(drag, panelId, mode)
+                    placePanelInGroup(drag, leadPanelId, mode)
                   }}
                 >
                   {dropMode === 'before' && (
-                    <div className="pointer-events-none h-[4px] w-full bg-cyan-300 shadow-[0_0_0_1px_rgba(34,211,238,0.65)]" />
+                    <div className="pointer-events-none absolute left-0 right-0 top-0 z-10 h-1 rounded-t bg-cyan-300/30 shadow-[0_0_0_1px_rgba(34,211,238,0.2)]" />
                   )}
                   <div
                     className={`flex items-center justify-between border-b px-2 py-1 text-xs ${
@@ -1761,9 +1777,23 @@ export const EditorScreen = () => {
                             setDockDropTarget(null)
                             setDraggingPanelId(null)
                           }}
-                          onClick={() => focusPanelInGroup(tabPanelId, panelId)}
+                          onDragOver={(event) => {
+                            event.preventDefault()
+                            event.stopPropagation()
+                            event.dataTransfer.dropEffect = 'move'
+                          }}
+                          onDrop={(event) => {
+                            event.preventDefault()
+                            event.stopPropagation()
+                            const dragPanelId = draggingPanelId ?? (event.dataTransfer.getData('imagelab/panel-tab') as PanelId)
+                            if (!dragPanelId || dragPanelId === tabPanelId) return
+                            setDockDropTarget(null)
+                            setDraggingPanelId(null)
+                            reorderPanelTabs(dragPanelId, tabPanelId)
+                          }}
+                          onClick={() => focusPanelInGroup(tabPanelId)}
                           className={`shrink-0 rounded border px-2 py-[2px] text-[11px] ${
-                            tabPanelId === panelId
+                            tabPanelId === activePanelInGroup
                               ? 'border-cyan-500 bg-cyan-950/40 text-cyan-200'
                               : 'border-slate-700 text-slate-300 hover:bg-slate-800'
                           }`}
@@ -1774,21 +1804,21 @@ export const EditorScreen = () => {
                     </div>
                     <button
                       className="rounded border border-slate-700 px-2 py-[2px] hover:bg-slate-800"
-                      onClick={() => popoutPanel(panelId)}
+                      onClick={() => popoutPanel(activePanelInGroup)}
                     >
                       Pop Out
                     </button>
                   </div>
                   <div className="min-h-0 flex-1 overflow-auto">
-                    {renderPanel(project, selectedLayer, panelId, assets, history?.labels ?? [], updateProject, setWorkspace, togglePanelVisibility, popoutPanel, jumpToHistory, openLayerContextMenu, openTextEditorForLayer, moveLayerRelative, layerDragState, beginLayerDrag, hoverLayerDragTarget, clearLayerDrag, boxSelectedLayerIds, () => setBoxSelectedLayerIds([]), layerRename, startLayerRename, updateLayerRenameValue, commitLayerRename, canvasSelection, () => setCanvasSelection(null), cropToSelection)}
+                    {renderPanel(project, selectedLayer, activePanelInGroup, assets, history?.labels ?? [], updateProject, setWorkspace, togglePanelVisibility, popoutPanel, jumpToHistory, openLayerContextMenu, openTextEditorForLayer, moveLayerRelative, layerDragState, beginLayerDrag, hoverLayerDragTarget, clearLayerDrag, boxSelectedLayerIds, () => setBoxSelectedLayerIds([]), layerRename, startLayerRename, updateLayerRenameValue, commitLayerRename, canvasSelection, () => setCanvasSelection(null), cropToSelection)}
                   </div>
                   {dropMode === 'after' && (
-                    <div className="pointer-events-none h-[4px] w-full bg-cyan-300 shadow-[0_0_0_1px_rgba(34,211,238,0.65)]" />
+                    <div className="pointer-events-none absolute bottom-0 left-0 right-0 z-10 h-1 rounded-b bg-cyan-300/30 shadow-[0_0_0_1px_rgba(34,211,238,0.2)]" />
                   )}
                   {index < dockGroups.length - 1 && (
                     <div
                       className="h-1 cursor-row-resize bg-slate-800 transition-colors hover:bg-cyan-500/70"
-                      onPointerDown={(event) => startDockResize(panelId, event)}
+                      onPointerDown={(event) => startDockResize(leadPanelId, event)}
                     />
                   )}
                 </div>

@@ -24,14 +24,14 @@ const defaultSwatches: Swatch[] = [
 ]
 
 const defaultPrefs: WorkspacePrefs = {
-  panelOrder: ['layers', 'properties', 'assets', 'swatches', 'history'],
+  panelOrder: ['history', 'layers', 'properties', 'swatches', 'assets'],
   hiddenPanels: [],
   activePanel: 'layers',
   floatingPanels: [],
   dockLayoutMode: 'grouped',
-  dockPanelGroups: [['layers'], ['properties'], ['assets'], ['swatches'], ['history']],
+  dockPanelGroups: [['history'], ['layers', 'properties', 'swatches'], ['assets']],
   dockPanelHeights: {
-    layers: 220,
+    layers: 260,
     properties: 220,
     assets: 220,
     swatches: 180,
