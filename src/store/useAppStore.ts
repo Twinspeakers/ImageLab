@@ -28,6 +28,15 @@ const defaultPrefs: WorkspacePrefs = {
   hiddenPanels: [],
   activePanel: 'layers',
   floatingPanels: [],
+  dockLayoutMode: 'grouped',
+  dockPanelGroups: [['layers'], ['properties'], ['assets'], ['swatches'], ['history']],
+  dockPanelHeights: {
+    layers: 220,
+    properties: 220,
+    assets: 220,
+    swatches: 180,
+    history: 180,
+  },
   swatches: defaultSwatches,
   rasterizeScale: 2,
 }

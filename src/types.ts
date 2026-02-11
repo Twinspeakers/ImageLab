@@ -169,6 +169,9 @@ export interface WorkspacePrefs {
   hiddenPanels: PanelId[]
   activePanel: PanelId
   floatingPanels: FloatingPanel[]
+  dockLayoutMode?: 'grouped' | 'split'
+  dockPanelGroups?: PanelId[][]
+  dockPanelHeights?: Partial<Record<PanelId, number>>
   swatches: Swatch[]
   rasterizeScale: 1 | 2 | 4
 }
