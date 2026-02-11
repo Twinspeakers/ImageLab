@@ -1959,10 +1959,10 @@ const renderPanel = (
             }`}
           >
             {layerDragState?.targetId === layer.id && layerDragState.activeId !== layer.id && layerDragState.position === 'before' && (
-              <div className="pointer-events-none absolute -top-[1px] left-1 right-1 border-t-2 border-cyan-400" />
+              <div className="pointer-events-none absolute -top-[1px] left-0 right-0 border-t-2 border-cyan-300/40" />
             )}
             {layerDragState?.targetId === layer.id && layerDragState.activeId !== layer.id && layerDragState.position === 'after' && (
-              <div className="pointer-events-none absolute -bottom-[1px] left-1 right-1 border-b-2 border-cyan-400" />
+              <div className="pointer-events-none absolute -bottom-[1px] left-0 right-0 border-b-2 border-cyan-300/40" />
             )}
             <button
               className="flex min-w-0 flex-1 items-center gap-2 text-left"
