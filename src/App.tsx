@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
+import { EditorPage } from './features/editor/EditorPage'
 import { useAppStore } from './store/useAppStore'
-import { EditorScreen } from './routes/EditorScreen'
 
 function App() {
   const initialized = useAppStore((state) => state.initialized)
@@ -21,7 +21,7 @@ function App() {
 
   return (
     <Routes>
-      <Route path="/" element={<EditorScreen />} />
+      <Route path="/" element={<EditorPage />} />
       <Route path="/editor" element={<Navigate to="/" replace />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

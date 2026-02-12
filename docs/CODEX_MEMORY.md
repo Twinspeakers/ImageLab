@@ -1,3 +1,5 @@
+
+
 # CODEX_MEMORY
 
 Purpose: stable reference for ongoing work in ImageLab.
@@ -8,6 +10,7 @@ This file is intentionally short and durable. Update only when core direction ch
 - Image editor + lightweight DAW feel.
 - Fast local-first UX.
 - Photoshop-like interaction expectations where practical.
+- Illustrator-like interaction expectations where practical.
 
 ## Core UX Decisions (Current)
 - Start screen is an overlay on top of editor, not a separate page.
@@ -17,6 +20,7 @@ This file is intentionally short and durable. Update only when core direction ch
 - Selection tool uses marquee ("marching ants") behavior.
 - Moving marquee with Move tool moves selection bounds only (not content) unless a tool/action explicitly edits content.
 - Crop should be undoable and behave as a regular history action.
+- Left tool rail includes foreground/background color swatches (default black/white) with picker modal on click.
 
 ## Engineering Guardrails
 - Prefer incremental, reversible edits.
@@ -24,6 +28,15 @@ This file is intentionally short and durable. Update only when core direction ch
 - Preserve persistence invariants in Zustand + IndexedDB.
 - Avoid adding dependencies unless absolutely necessary.
 - Build must pass after every meaningful change.
+- Keep `EditorPage` orchestration-focused; do not let it become a monolith again.
+
+## Architecture Rule (Tools/Features)
+- New UI surface: create/update a focused component in `src/features/editor/components` or `src/features/editor/panels`.
+- New stateful behavior or interaction workflow: create/update a hook in `src/features/editor/hooks`.
+- Pure helpers/math/transforms: place in `src/features/editor/utils`.
+- Menu/command mapping: keep in `src/features/editor/menu` or dedicated action hooks.
+- Keep page-level files (`src/features/editor/EditorPage.tsx`) for composition and wiring only.
+- If adding a new tool, prefer adding at least one dedicated hook/module rather than expanding page logic inline.
 
 ## Refactor Priority (When Time Allows)
 - Split `src/routes/EditorScreen.tsx` into:
@@ -36,4 +49,3 @@ This file is intentionally short and durable. Update only when core direction ch
 - Default to direct implementation over long planning.
 - Keep visual polish subtle and intentional.
 - If uncertain, bias toward predictable desktop-editor conventions.
-
