@@ -36,7 +36,11 @@ export const LayerRaster = ({ layer, asset }: LayerRasterProps) => {
   }
 
   if (layer.kind === 'raster-text' || layer.kind === 'vector-text') {
-    return <div style={{ ...style, color: layer.fill, fontSize: layer.fontSize }}>{layer.text}</div>
+    return (
+      <div style={{ ...style, color: layer.fill, fontSize: layer.fontSize, whiteSpace: 'pre' }}>
+        {layer.text}
+      </div>
+    )
   }
 
   if (layer.kind === 'vector-rect') {

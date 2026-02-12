@@ -34,6 +34,8 @@ type BuildMenuModelParams = {
   onCrop: () => void
   onNewTextLayer: () => void
   onNewShapeLayer: () => void
+  onSetBackgroundFromForeground: () => void
+  onSetBackgroundFromBackground: () => void
   onTogglePanelVisibility: (panelId: PanelId) => void
   onDockAllPanels: () => void
   onResetWorkspace: () => void
@@ -72,6 +74,8 @@ export const buildMenuModel = ({
   onCrop,
   onNewTextLayer,
   onNewShapeLayer,
+  onSetBackgroundFromForeground,
+  onSetBackgroundFromBackground,
   onTogglePanelVisibility,
   onDockAllPanels,
   onResetWorkspace,
@@ -112,6 +116,8 @@ export const buildMenuModel = ({
   Layer: [
     { label: 'New Text Layer', onClick: onNewTextLayer },
     { label: 'New Shape Layer', onClick: onNewShapeLayer },
+    { label: 'Set Background from Foreground', onClick: onSetBackgroundFromForeground },
+    { label: 'Set Background from Background', onClick: onSetBackgroundFromBackground },
   ],
   Window: [
     ...ALL_PANELS.map((panelId) => ({ label: `${hiddenPanels.includes(panelId) ? '' : '✓ '} ${PANEL_TITLES[panelId]}`, onClick: () => onTogglePanelVisibility(panelId) })),

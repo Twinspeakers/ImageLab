@@ -5,6 +5,7 @@ import { StartOverlay } from '../../components/StartOverlay'
 import { DEFAULT_DOCK_PANEL_HEIGHTS, DEFAULT_MENU_ORDER, PANEL_TITLES, toolList } from './constants'
 import { DockedPanelsColumn } from './components/DockedPanelsColumn'
 import { ColorPickerPanel } from './components/ColorPickerPanel'
+import { DetachedProjectWindow } from './components/DetachedProjectWindow'
 import { EditorStage } from './components/EditorStage'
 import { EmptyWorkspace } from './components/EmptyWorkspace'
 import { FloatingPanel } from './components/FloatingPanel'
@@ -108,6 +109,11 @@ export const EditorPage = () => {
   const [backgroundColor, setBackgroundColor] = useState('#ffffff')
   const [activeColorTarget, setActiveColorTarget] = useState<'foreground' | 'background' | null>(null)
   const [colorPanelPos, setColorPanelPos] = useState({ x: 84, y: 96 })
+  const [detachedWindows, setDetachedWindows] = useState<Array<{ id: string; projectId: string; x: number; y: number; width: number; height: number; z: number }>>([])
+  const [isProjectDockTargetActive, setIsProjectDockTargetActive] = useState(false)
+  const tabsBarRef = useRef<HTMLDivElement | null>(null)
+  const windowHostRef = useRef<HTMLDivElement | null>(null)
+  const detachedDragRef = useRef<{ id: string; projectId: string; mode: 'move' | 'resize'; pointerId: number; startX: number; startY: number; baseX: number; baseY: number; baseW: number; baseH: number } | null>(null)
   const assetMap = useMemo(() => new Map(Object.values(assets).map((asset) => [asset.id, asset])), [assets])
   const { layerDragState, moveLayerRelative, beginLayerDrag, hoverLayerDragTarget, clearLayerDrag } = useLayerDrag({
     project,
@@ -154,6 +160,7 @@ export const EditorPage = () => {
   const { beginTextEntry, commitPen } = useCreationActions({
     project,
     penDraft,
+    foregroundColor,
     updateProject,
     beginTextLayerSession,
     setPenDraft: (next) => setPenDraft(next),
@@ -284,6 +291,131 @@ export const EditorPage = () => {
     }
   }, [areaSelection])
 
+  const revealProjectIfNeeded = (projectId: string) => {
+    const currentProject = projects[projectId]
+    if (!currentProject) return
+    const stage = document.getElementById('editor-stage') as HTMLDivElement | null
+    if (!stage) return
+    const rect = stage.getBoundingClientRect()
+    const zoom = currentProject.view.zoom
+    const docWidth = currentProject.document.width * zoom
+    const docHeight = currentProject.document.height * zoom
+    const left = currentProject.view.panX
+    const top = currentProject.view.panY
+    const right = left + docWidth
+    const bottom = top + docHeight
+    const intersectsStage =
+      Number.isFinite(zoom) &&
+      zoom > 0 &&
+      right > 0 &&
+      bottom > 0 &&
+      left < rect.width &&
+      top < rect.height
+    if (intersectsStage) return
+    updateProject(projectId, (current) => {
+      const fitZoom = Math.min((rect.width - 100) / current.document.width, (rect.height - 100) / current.document.height)
+      current.view.zoom = clamp(fitZoom, 0.1, 8)
+      current.view.panX = (rect.width - current.document.width * current.view.zoom) / 2
+      current.view.panY = (rect.height - current.document.height * current.view.zoom) / 2
+    }, 'Pan')
+  }
+
+  const dockProjectWindow = (projectId: string) => {
+    setDetachedWindows((current) => current.filter((item) => item.projectId !== projectId))
+    setActiveProject(projectId)
+    window.requestAnimationFrame(() => revealProjectIfNeeded(projectId))
+  }
+
+  useEffect(() => {
+    const onPointerMove = (event: PointerEvent) => {
+      const drag = detachedDragRef.current
+      if (!drag || drag.pointerId !== event.pointerId) return
+      const dx = event.clientX - drag.startX
+      const dy = event.clientY - drag.startY
+      if (drag.mode === 'move') {
+        const tabsRect = tabsBarRef.current?.getBoundingClientRect()
+        const hostRect = windowHostRef.current?.getBoundingClientRect()
+        const dockRect = tabsRect ?? (hostRect
+          ? { left: hostRect.left, right: hostRect.right, top: hostRect.top, bottom: hostRect.top + 36 }
+          : null)
+        const isOverDockTarget = Boolean(
+          dockRect &&
+          event.clientX >= dockRect.left &&
+          event.clientX <= dockRect.right &&
+          event.clientY >= dockRect.top &&
+          event.clientY <= dockRect.bottom,
+        )
+        setIsProjectDockTargetActive((current) => (current === isOverDockTarget ? current : isOverDockTarget))
+      }
+      setDetachedWindows((current) => current.map((windowItem) => {
+        if (windowItem.id !== drag.id) return windowItem
+        if (drag.mode === 'move') {
+          return { ...windowItem, x: Math.max(0, drag.baseX + dx), y: Math.max(0, drag.baseY + dy), z: 1000 }
+        }
+        return { ...windowItem, width: Math.max(260, drag.baseW + dx), height: Math.max(200, drag.baseH + dy), z: 1000 }
+      }))
+    }
+    const onPointerUp = (event: PointerEvent) => {
+      const drag = detachedDragRef.current
+      if (!drag || drag.pointerId !== event.pointerId) return
+      if (drag.mode === 'move') {
+        const tabsRect = tabsBarRef.current?.getBoundingClientRect()
+        const hostRect = windowHostRef.current?.getBoundingClientRect()
+        const dockRect = tabsRect ?? (hostRect
+          ? { left: hostRect.left, right: hostRect.right, top: hostRect.top, bottom: hostRect.top + 36 }
+          : null)
+        const dx = event.clientX - drag.startX
+        const dy = event.clientY - drag.startY
+        const nextX = Math.max(0, drag.baseX + dx)
+        const nextY = Math.max(0, drag.baseY + dy)
+        const hostLeft = hostRect?.left ?? 0
+        const hostTop = hostRect?.top ?? 0
+        const windowRect = {
+          left: hostLeft + nextX,
+          top: hostTop + nextY,
+          right: hostLeft + nextX + drag.baseW,
+          bottom: hostTop + nextY + drag.baseH,
+        }
+        const overlapsTabs = Boolean(
+          dockRect &&
+          windowRect.left < dockRect.right &&
+          windowRect.right > dockRect.left &&
+          windowRect.top < dockRect.bottom &&
+          windowRect.bottom > dockRect.top,
+        )
+        if (
+          dockRect &&
+          event.clientX >= dockRect.left &&
+          event.clientX <= dockRect.right &&
+          event.clientY >= dockRect.top &&
+          event.clientY <= dockRect.bottom
+        ) {
+          dockProjectWindow(drag.projectId)
+        } else if (overlapsTabs) {
+          dockProjectWindow(drag.projectId)
+        }
+      }
+      setIsProjectDockTargetActive(false)
+      detachedDragRef.current = null
+    }
+    window.addEventListener('pointermove', onPointerMove)
+    window.addEventListener('pointerup', onPointerUp)
+    return () => {
+      window.removeEventListener('pointermove', onPointerMove)
+      window.removeEventListener('pointerup', onPointerUp)
+    }
+  }, [])
+
+  useEffect(() => {
+    setDetachedWindows((current) => current.filter((item) => openProjectIds.includes(item.projectId)))
+  }, [openProjectIds])
+
+  useEffect(() => {
+    if (!project) return
+    const frame = window.requestAnimationFrame(() => revealProjectIfNeeded(project.id))
+    return () => window.cancelAnimationFrame(frame)
+  }, [project?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
   useEditorShortcuts({
     project,
     tools,
@@ -312,6 +444,8 @@ export const EditorPage = () => {
     cropToSelection,
     pasteLayer,
     deleteSelectedArea,
+    onApplyForegroundFill: () => applyFillToSelectedLayer(foregroundColor),
+    onApplyBackgroundFill: () => applyFillToSelectedLayer(backgroundColor),
     fitToScreen,
     setZoom,
     onExport,
@@ -340,12 +474,196 @@ export const EditorPage = () => {
 
   const onStageDrop = (event: DragEvent<HTMLDivElement>) => {
     event.preventDefault()
+    const detachedProjectId = event.dataTransfer.getData('imagelab/project-tab')
+    if (detachedProjectId) {
+      detachProjectWindow(detachedProjectId, event.clientX, event.clientY)
+      return
+    }
     if (!project) return
     const id = event.dataTransfer.getData('imagelab/asset')
     const asset = assets[id]
     if (!asset) return
     const p = docPoint(event, event.currentTarget, project)
     void addLayerFromAsset(project, asset, p, workspace.rasterizeScale, updateProject, { loadImage, toDataUrl, uid })
+  }
+
+  const detachProjectWindow = (projectId: string, clientX: number, clientY: number) => {
+    const hostRect = windowHostRef.current?.getBoundingClientRect()
+    const localX = hostRect ? clientX - hostRect.left : clientX
+    const localY = hostRect ? clientY - hostRect.top : clientY
+    const nextX = Math.max(0, localX - 180)
+    const nextY = Math.max(0, localY - 60)
+    setDetachedWindows((current) => {
+      const existing = current.find((item) => item.projectId === projectId)
+      if (existing) {
+        return current.map((item) => item.projectId === projectId
+          ? { ...item, x: nextX, y: nextY, z: 1000 }
+          : item)
+      }
+      return [
+        ...current,
+        {
+          id: uid('dw'),
+          projectId,
+          x: nextX,
+          y: nextY,
+          width: 460,
+          height: 340,
+          z: 1000,
+        },
+      ]
+    })
+    if (project?.id === projectId) {
+      const nextDetached = new Set(detachedWindows.map((windowItem) => windowItem.projectId))
+      nextDetached.add(projectId)
+      const nextDocked = openProjectIds.find((id) => id !== projectId && !nextDetached.has(id))
+      if (nextDocked) {
+        setActiveProject(nextDocked)
+      }
+    }
+  }
+
+  const onWorkspaceDrop = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    const detachedProjectId = event.dataTransfer.getData('imagelab/project-tab')
+    if (!detachedProjectId) return
+    detachProjectWindow(detachedProjectId, event.clientX, event.clientY)
+  }
+
+  const focusDetachedWindow = (id: string, projectId: string) => {
+    setDetachedWindows((current) => current.map((item) => (item.id === id ? { ...item, z: 1000 } : item)))
+    setActiveProject(projectId)
+  }
+
+  const dockDetachedProject = (projectId: string) => dockProjectWindow(projectId)
+
+  const startDetachedWindowMove = (id: string, event: ReactPointerEvent<HTMLDivElement>) => {
+    const target = detachedWindows.find((item) => item.id === id)
+    if (!target) return
+    event.preventDefault()
+    event.stopPropagation()
+    detachedDragRef.current = {
+      id,
+      projectId: target.projectId,
+      mode: 'move',
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      baseX: target.x,
+      baseY: target.y,
+      baseW: target.width,
+      baseH: target.height,
+    }
+  }
+
+  const startDetachedWindowResize = (id: string, event: ReactPointerEvent<HTMLDivElement>) => {
+    const target = detachedWindows.find((item) => item.id === id)
+    if (!target) return
+    event.preventDefault()
+    event.stopPropagation()
+    detachedDragRef.current = {
+      id,
+      projectId: target.projectId,
+      mode: 'resize',
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      baseX: target.x,
+      baseY: target.y,
+      baseW: target.width,
+      baseH: target.height,
+    }
+  }
+
+  const setBackgroundFromColor = (color: string) => {
+    if (!project) return
+    updateProject(project.id, (current) => {
+      current.document.backgroundMode = 'custom'
+      current.document.backgroundColor = color
+      const backgroundLayer = current.layers.find(
+        (layer): layer is Extract<Layer, { kind: 'vector-rect' }> => layer.kind === 'vector-rect' && layer.protected === true,
+      )
+      if (!backgroundLayer) return
+      backgroundLayer.fill = color
+      backgroundLayer.visible = true
+    }, 'Set background color')
+  }
+
+  function applyFillToSelectedLayer(color: string) {
+    if (!project || !selectedLayer) return
+    updateProject(project.id, (current) => {
+      const layer = current.layers.find((item) => item.id === current.selectedLayerId)
+      if (!layer || layer.locked) return
+
+      // 1) If a marquee exists, fill exactly that selected canvas area.
+      if (canvasSelection) {
+        const width = Math.max(1, Math.round(canvasSelection.right - canvasSelection.left))
+        const height = Math.max(1, Math.round(canvasSelection.bottom - canvasSelection.top))
+        if (width < 1 || height < 1) return
+        const fillLayerId = uid('layer')
+        current.layers.unshift({
+          id: fillLayerId,
+          kind: 'vector-rect',
+          name: 'Fill',
+          visible: true,
+          locked: false,
+          opacity: 1,
+          x: Math.round(canvasSelection.left),
+          y: Math.round(canvasSelection.top),
+          rotation: 0,
+          scaleX: 1,
+          scaleY: 1,
+          width,
+          height,
+          segments: [{ x: 0, y: 0, width, height }],
+          fill: color,
+          stroke: 'transparent',
+          strokeWidth: 0,
+        })
+        current.selectedLayerId = fillLayerId
+        return
+      }
+
+      // 2) Text layers: apply fill directly to selected text.
+      if (layer.kind === 'vector-text' || layer.kind === 'raster-text') {
+        layer.fill = color
+        return
+      }
+
+      // 3) Non-text with no marquee: fill the whole canvas via background layer.
+      const backgroundLayer = current.layers.find(
+        (item): item is Extract<Layer, { kind: 'vector-rect' }> =>
+          item.kind === 'vector-rect' && item.protected === true,
+      )
+      if (backgroundLayer && !backgroundLayer.locked) {
+        backgroundLayer.fill = color
+        backgroundLayer.visible = true
+        current.document.backgroundMode = 'custom'
+        current.document.backgroundColor = color
+        return
+      }
+      const fillLayerId = uid('layer')
+      current.layers.unshift({
+        id: fillLayerId,
+        kind: 'vector-rect',
+        name: 'Canvas Fill',
+        visible: true,
+        locked: false,
+        opacity: 1,
+        x: 0,
+        y: 0,
+        rotation: 0,
+        scaleX: 1,
+        scaleY: 1,
+        width: current.document.width,
+        height: current.document.height,
+        segments: [{ x: 0, y: 0, width: current.document.width, height: current.document.height }],
+        fill: color,
+        stroke: 'transparent',
+        strokeWidth: 0,
+      })
+      current.selectedLayerId = fillLayerId
+    }, canvasSelection ? 'Fill selection' : 'Apply fill')
   }
 
   const stageCursor = project
@@ -427,14 +745,16 @@ export const EditorPage = () => {
             scaleY: 1,
             width: 220,
             height: 130,
-            fill: '#22d3ee',
-            stroke: '#0f172a',
+            fill: foregroundColor,
+            stroke: backgroundColor,
             strokeWidth: 1,
           })
         }
         c.selectedLayerId = c.layers[0]?.id ?? null
       }, 'New shape')
     },
+    onSetBackgroundFromForeground: () => setBackgroundFromColor(foregroundColor),
+    onSetBackgroundFromBackground: () => setBackgroundFromColor(backgroundColor),
     onTogglePanelVisibility: togglePanelVisibility,
     onDockAllPanels: dockAllPanels,
     onResetWorkspace: resetWorkspace,
@@ -457,6 +777,10 @@ export const EditorPage = () => {
     if (/^[0-9a-fA-F]{6}$/.test(input)) return `#${input.toLowerCase()}`
     return fallback
   }
+  const detachedProjectIds = detachedWindows.map((windowItem) => windowItem.projectId)
+  const dockedProjectIds = openProjectIds.filter((id) => !detachedProjectIds.includes(id))
+  const hasDockedProjects = dockedProjectIds.length > 0
+  const isActiveProjectDetached = Boolean(project && detachedProjectIds.includes(project.id))
   const renderableLayers = project
     ? (editingTextLayer
       ? project.layers.filter((layer) => layer.visible && layer.id !== editingTextLayer.id)
@@ -603,14 +927,6 @@ export const EditorPage = () => {
         onHome={() => setShowStartOverlay(true)}
       />
 
-      <ProjectTabsBar
-        openProjectIds={openProjectIds}
-        activeProjectId={project.id}
-        projects={projects}
-        onSetActiveProject={setActiveProject}
-        onCloseProjectTab={closeProjectTab}
-      />
-
       <div className="flex min-h-0 flex-1">
         <ToolRail
           tools={tools}
@@ -621,31 +937,80 @@ export const EditorPage = () => {
           onPickForeground={() => setActiveColorTarget('foreground')}
           onPickBackground={() => setActiveColorTarget('background')}
         />
-        <EditorStage
-          project={project}
-          stageCursor={stageCursor}
-          documentBackdrop={documentBackdropStyle()}
-          layersNode={layersNode}
-          editingTextLayer={editingTextLayer}
-          textEntryValue={textEntry?.value ?? ''}
-          textEntryInputRef={textEntryInputRef}
-          onTextEntryValueChange={updateTextEntryValue}
-          onFinishTextEntry={() => finishTextEntry(true)}
-          penDraftLength={penDraft.length}
-          onCommitPenOpen={() => commitPen(false)}
-          onCommitPenClosed={() => commitPen(true)}
-          marquee={marquee}
-          areaSelection={areaSelection}
-          areaMove={areaMove}
-          selectedLayer={selectedLayer}
-          canvasSelection={canvasSelection}
-          onStagePointerDown={onStagePointerDown}
-          onStagePointerMove={onStagePointerMove}
-          onStagePointerUp={onStagePointerUp}
-          onWheelStage={onWheelStage}
-          onStageDrop={onStageDrop}
-          onDocumentPointerDown={onDocumentPointerDown}
-        />
+        <div
+          className="relative flex min-h-0 flex-1 flex-col"
+          onDragOver={(event) => event.preventDefault()}
+          onDrop={onWorkspaceDrop}
+        >
+          {isProjectDockTargetActive && (
+            <div className="pointer-events-none absolute left-1 right-1 top-0 z-30 h-9 rounded-b border border-slate-300/25 bg-slate-200/10" />
+          )}
+          {hasDockedProjects && (
+            <ProjectTabsBar
+              barRef={tabsBarRef}
+              openProjectIds={dockedProjectIds}
+              activeProjectId={project.id}
+              projects={projects}
+              dockTargetActive={isProjectDockTargetActive}
+              onSetActiveProject={setActiveProject}
+              onCloseProjectTab={closeProjectTab}
+              onStartProjectDrag={(projectId) => setActiveProject(projectId)}
+            />
+          )}
+
+          <div ref={windowHostRef} className="relative flex min-h-0 flex-1">
+            {isActiveProjectDetached ? (
+              <div className="min-h-0 flex-1 bg-[radial-gradient(circle_at_1px_1px,_#334155_1px,_transparent_0)] bg-[size:24px_24px]" />
+            ) : (
+              <EditorStage
+                project={project}
+                stageCursor={stageCursor}
+                documentBackdrop={documentBackdropStyle()}
+                layersNode={layersNode}
+                editingTextLayer={editingTextLayer}
+                textEntryValue={textEntry?.value ?? ''}
+                textEntryInputRef={textEntryInputRef}
+                onTextEntryValueChange={updateTextEntryValue}
+                onFinishTextEntry={() => finishTextEntry(true)}
+                penDraftLength={penDraft.length}
+                onCommitPenOpen={() => commitPen(false)}
+                onCommitPenClosed={() => commitPen(true)}
+                marquee={marquee}
+                areaSelection={areaSelection}
+                areaMove={areaMove}
+                selectedLayer={selectedLayer}
+                canvasSelection={canvasSelection}
+                onStagePointerDown={onStagePointerDown}
+                onStagePointerMove={onStagePointerMove}
+                onStagePointerUp={onStagePointerUp}
+                onWheelStage={onWheelStage}
+                onStageDrop={onStageDrop}
+                onDocumentPointerDown={onDocumentPointerDown}
+              />
+            )}
+            {detachedWindows.map((windowItem) => {
+              const windowProject = projects[windowItem.projectId]
+              if (!windowProject) return null
+              return (
+                <DetachedProjectWindow
+                  key={windowItem.id}
+                  project={windowProject}
+                  assets={assets}
+                  isActive={activeProjectId === windowItem.projectId}
+                  x={windowItem.x}
+                  y={windowItem.y}
+                  width={windowItem.width}
+                  height={windowItem.height}
+                  z={windowItem.z}
+                  onPointerDownHeader={(event) => startDetachedWindowMove(windowItem.id, event)}
+                  onPointerDownResize={(event) => startDetachedWindowResize(windowItem.id, event)}
+                  onClose={() => closeProjectTab(windowItem.projectId)}
+                  onFocus={() => focusDetachedWindow(windowItem.id, windowItem.projectId)}
+                />
+              )
+            })}
+          </div>
+        </div>
 
         <DockedPanelsColumn
           visiblePanels={visiblePanels}

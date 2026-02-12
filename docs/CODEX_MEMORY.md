@@ -21,6 +21,12 @@ This file is intentionally short and durable. Update only when core direction ch
 - Moving marquee with Move tool moves selection bounds only (not content) unless a tool/action explicitly edits content.
 - Crop should be undoable and behave as a regular history action.
 - Left tool rail includes foreground/background color swatches (default black/white) with picker modal on click.
+- Foreground/background swatches now drive outputs:
+  - New text layer fill uses foreground color.
+  - New shape layer uses foreground fill + background stroke.
+  - Layer menu includes background actions to set background from foreground/background swatches.
+  - Shortcuts: `Alt+Backspace` applies foreground fill to selected fill-capable layer; `Ctrl+Backspace` applies background fill.
+- Project tabs can be dragged into workspace to detach as floating project windows over the dotted workspace, with Dock action to return to tabs.
 
 ## Engineering Guardrails
 - Prefer incremental, reversible edits.

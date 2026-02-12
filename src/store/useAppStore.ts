@@ -110,6 +110,8 @@ interface AppState {
 }
 
 const saveTimers = new Map<string, number>()
+const lastHistoryEvent = new Map<string, { label: string; at: number }>()
+const COALESCED_HISTORY_LABELS = new Set(['Move', 'Pan', 'Zoom scrub', 'Zoom cursor'])
 
 const persistProjectSoon = (project: Project) => {
   const existing = saveTimers.get(project.id)
@@ -319,17 +321,27 @@ export const useAppStore = create<AppState>((set, get) => ({
     recipe(next)
     next.updatedAt = new Date().toISOString()
 
+    const now = Date.now()
+    const recent = lastHistoryEvent.get(projectId)
+    const shouldCoalesce =
+      COALESCED_HISTORY_LABELS.has(label) &&
+      recent?.label === label &&
+      now - recent.at < 250
+
     set((state) => ({
       projects: { ...state.projects, [projectId]: next },
       recents: [
         { id: next.id, name: next.name, updatedAt: next.updatedAt, type: next.type },
         ...state.recents.filter((item) => item.id !== next.id),
       ].slice(0, 20),
-      historyByProject: {
-        ...state.historyByProject,
-        [projectId]: pushHistory(state.historyByProject[projectId], before, label),
-      },
+      historyByProject: shouldCoalesce
+        ? state.historyByProject
+        : {
+          ...state.historyByProject,
+          [projectId]: pushHistory(state.historyByProject[projectId], before, label),
+        },
     }))
+    lastHistoryEvent.set(projectId, { label, at: now })
     persistProjectSoon(next)
   },
 

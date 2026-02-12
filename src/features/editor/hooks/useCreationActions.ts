@@ -4,6 +4,7 @@ import type { PathPoint, Project } from '../../../types'
 type UseCreationActionsParams = {
   project: Project | null
   penDraft: PathPoint[]
+  foregroundColor: string
   updateProject: (projectId: string, recipe: (project: Project) => void, label?: string) => void
   beginTextLayerSession: (layerId: string, value?: string) => void
   setPenDraft: (next: PathPoint[]) => void
@@ -12,6 +13,7 @@ type UseCreationActionsParams = {
 export const useCreationActions = ({
   project,
   penDraft,
+  foregroundColor,
   updateProject,
   beginTextLayerSession,
   setPenDraft,
@@ -34,7 +36,7 @@ export const useCreationActions = ({
         scaleY: 1,
         text: '',
         fontSize: 42,
-        fill: '#111827',
+        fill: foregroundColor,
       })
       current.selectedLayerId = layerId
     }, 'New text')
@@ -72,4 +74,3 @@ export const useCreationActions = ({
     commitPen,
   }
 }
-

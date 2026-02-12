@@ -29,6 +29,8 @@ type UseEditorShortcutsParams = {
   cropToSelection: () => void
   pasteLayer: () => void
   deleteSelectedArea: () => void
+  onApplyForegroundFill: () => void
+  onApplyBackgroundFill: () => void
   fitToScreen: () => void
   setZoom: (zoom: number) => void
   onExport: () => Promise<void>
@@ -63,6 +65,8 @@ export const useEditorShortcuts = ({
   cropToSelection,
   pasteLayer,
   deleteSelectedArea,
+  onApplyForegroundFill,
+  onApplyBackgroundFill,
   fitToScreen,
   setZoom,
   onExport,
@@ -130,6 +134,16 @@ export const useEditorShortcuts = ({
       if (mod && k === 'x') { event.preventDefault(); if (selectedLayer) { setClipboard([structuredClone(selectedLayer)]); deleteLayer(); } return }
       if (mod && event.shiftKey && k === 'x') { event.preventDefault(); cropToSelection(); return }
       if (mod && k === 'v') { event.preventDefault(); pasteLayer(); return }
+      if (k === 'backspace' && event.altKey) {
+        event.preventDefault()
+        onApplyForegroundFill()
+        return
+      }
+      if (k === 'backspace' && event.ctrlKey) {
+        event.preventDefault()
+        onApplyBackgroundFill()
+        return
+      }
       if (k === 'delete' || k === 'backspace') {
         event.preventDefault()
         if (shouldDeleteArea) {
@@ -183,6 +197,8 @@ export const useEditorShortcuts = ({
     importIlp,
     isSpace,
     onExport,
+    onApplyBackgroundFill,
+    onApplyForegroundFill,
     pasteLayer,
     penDraft,
     preSpaceTool,
@@ -202,4 +218,3 @@ export const useEditorShortcuts = ({
     updateProject,
   ])
 }
-
